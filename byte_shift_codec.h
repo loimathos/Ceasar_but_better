@@ -15,9 +15,7 @@ typedef enum {
     BSC_WARN_ROUNDS_CLAMPED = 1,
     BSC_ERR_BAD_KEY = -1,
     BSC_ERR_BAD_PARAM = -2,
-    BSC_ERR_OUT_TOO_SMALL = -3,
-    BSC_ERR_LEN_MISMATCH = -4,
-    BSC_ERR_BAD_PADDING = -5
+    BSC_ERR_OUT_TOO_SMALL = -3
 } bsc_status_t;
 
 /**
@@ -28,9 +26,7 @@ typedef enum {
  *   key[1..] = YY sequence (per-block shift base values)
  *
  * Encoding rules:
- * - Input is padded with PKCS#7-style bytes (value = pad_len) to a multiple of XX.
- *   If the input is already aligned, pad_len is 0 and no extra block is added.
- * - One extra byte is appended at the end with pad_len.
+ * - No padding is added; the last block may be partial.
  * - Each block uses shift = (YY * rounds) mod 256.
  *
  * @param in Pointer to input data (non-NULL).
@@ -45,8 +41,7 @@ typedef enum {
  * @return int Status code (BSC_OK or BSC_WARN_ROUNDS_CLAMPED on success).
  *
  * Required output size:
- *   pad_len = (XX - (in_len % XX)) % XX
- *   out_len >= in_len + pad_len + 1
+ *   out_len >= in_len
  */
 int bsc_encode(const uint8_t *in,
                size_t in_len,
@@ -61,13 +56,12 @@ int bsc_encode(const uint8_t *in,
  * @brief Decode data produced by bsc_encode.
  *
  * Decoding rules:
- * - The last byte of input is pad_len.
- * - The payload length (in_len - 1) must be a multiple of XX.
- * - Output length is payload_len - pad_len.
+ * - No padding is expected; the last block may be partial.
+ * - Output length equals input length.
  * - rounds should match the value used for encoding (0 uses default).
  *
  * @param in Pointer to encoded input data (non-NULL).
- * @param in_len Length of encoded input in bytes (>= 1).
+ * @param in_len Length of encoded input in bytes.
  * @param key Decoding key (non-NULL).
  * @param key_len Length of the key in bytes (>= 2).
  * @param rounds Number of rounds (BYTE_SHIFT_DEFAULT_ROUNDS if 0).
@@ -78,8 +72,7 @@ int bsc_encode(const uint8_t *in,
  * @return int Status code (BSC_OK or BSC_WARN_ROUNDS_CLAMPED on success).
  *
  * Required output size:
- *   pad_len = in[in_len - 1]
- *   out_len >= (in_len - 1) - pad_len
+ *   out_len >= in_len
  */
 int bsc_decode(const uint8_t *in,
                size_t in_len,
