@@ -76,6 +76,11 @@ int bsc_decode(const uint8_t *in,
 - Encodage: `out_written = padded_len + 1` (payload encode + pad_len).
 - Decodage: `out_written = in_len` original (apres depadding).
 - Entree et sortie sont deux buffers distincts.
+- Aucune allocation dynamique: pas de malloc/free dans la lib.
+- La cle est geree par l appelant (la lib ne la conserve pas, ne l efface pas).
+- Encodage: `out_len >= in_len + pad_len + 1` avec `pad_len = (XX - (in_len % XX)) % XX`.
+- Decodage: `out_len >= (in_len - 1) - pad_len` avec `pad_len = in[in_len - 1]`.
+- Sur erreur, `out_written` est mis a 0 si fourni.
 
 ## Erreurs
 
@@ -91,11 +96,11 @@ int bsc_decode(const uint8_t *in,
 ```c
 uint8_t input[] = { 0x01 };
 uint8_t key[] = { 0x01, 0x01 };
-uint8_t encoded[1] = { 0 };
+uint8_t encoded[2] = { 0 };
 size_t written = 0;
 
-bsc_encode(input, 1, key, 2, 1, encoded, 1, &written);
-// encoded = { 0x02 }, written = 1
+bsc_encode(input, 1, key, 2, 1, encoded, 2, &written);
+// encoded = { 0x02, 0x00 }, written = 2
 ```
 
 ## Exemple avec cycles et padding
