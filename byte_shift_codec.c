@@ -31,12 +31,25 @@ static uint32_t bsc_rounds_eff(uint32_t rounds)
     return (rounds == 0u) ? BYTE_SHIFT_DEFAULT_ROUNDS : rounds;
 }
 
-/* Compute the effective shift value (mod 256). */
-static uint8_t bsc_effective_shift(uint8_t yy, uint32_t rounds)
+/* Clamp rounds mod 256 to avoid a zero shift when rounds is a multiple of 256. */
+static uint8_t bsc_rounds_mod(uint32_t rounds_eff, int *clamped)
 {
-    /* Only the low 8 bits matter for the mod-256 result. */
-    uint8_t rounds_mod = (uint8_t)rounds;
+    if (clamped) {
+        *clamped = 0;
+    }
+    uint8_t rounds_mod = (uint8_t)rounds_eff;
+    if (rounds_mod == 0u) {
+        rounds_mod = 1u;
+        if (clamped) {
+            *clamped = 1;
+        }
+    }
+    return rounds_mod;
+}
 
+/* Compute the effective shift value (mod 256). */
+static uint8_t bsc_effective_shift(uint8_t yy, uint8_t rounds_mod)
+{
     /* Multiply in 16 bits, then truncate to 8 bits (mod 256). */
     return (uint8_t)((uint16_t)yy * (uint16_t)rounds_mod);
 }
@@ -81,7 +94,7 @@ int bsc_encode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
     }
 
     size_t block_size = (size_t)block_size_u8;
-    /* Determine how many zero bytes must be added to align to block_size. */
+    /* Determine how many padding bytes must be added to align to block_size. */
     uint8_t pad_len = bsc_pad_len(in_len, block_size);
 
     /* Guard against size_t overflow when adding padding. */
@@ -104,16 +117,19 @@ int bsc_encode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
         return BSC_ERR_OUT_TOO_SMALL;
     }
 
+    uint32_t rounds_eff = bsc_rounds_eff(rounds);
+    int rounds_clamped = 0;
+    uint8_t rounds_mod = bsc_rounds_mod(rounds_eff, &rounds_clamped);
+
     /* Special case: empty input yields only the pad length byte. */
     if (padded_len == 0u) {
         out[0] = 0u;
         if (out_written) {
             *out_written = 1u;
         }
-        return BSC_OK;
+        return rounds_clamped ? BSC_WARN_ROUNDS_CLAMPED : BSC_OK;
     }
 
-    uint32_t rounds_eff = bsc_rounds_eff(rounds);
     /* Number of full blocks after padding. */
     size_t block_count = padded_len / block_size;
 
@@ -121,15 +137,15 @@ int bsc_encode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
     for (size_t block = 0u; block < block_count; ++block) {
         /* YY is chosen cyclically from the key. */
         uint8_t yy = key[1u + (block % shifts_len)];
-        uint8_t shift = bsc_effective_shift(yy, rounds_eff);
+        uint8_t shift = bsc_effective_shift(yy, rounds_mod);
         /* Base index of the current block. */
         size_t base = block * block_size;
 
         /* Encode each byte in the block, padding missing input with 0. */
         for (size_t j = 0u; j < block_size; ++j) {
             size_t idx = base + j;
-            /* Use 0 for padding beyond input length. */
-            uint8_t src = (idx < in_len) ? in[idx] : 0u;
+            /* Use the pad length value for padding beyond input length. */
+            uint8_t src = (idx < in_len) ? in[idx] : pad_len;
             out[idx] = (uint8_t)(src + shift);
         }
     }
@@ -141,7 +157,7 @@ int bsc_encode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
         *out_written = proc_len;
     }
 
-    return BSC_OK;
+    return rounds_clamped ? BSC_WARN_ROUNDS_CLAMPED : BSC_OK;
 }
 
 int bsc_decode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_len,
@@ -198,15 +214,18 @@ int bsc_decode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
         return BSC_ERR_OUT_TOO_SMALL;
     }
 
+    uint32_t rounds_eff = bsc_rounds_eff(rounds);
+    int rounds_clamped = 0;
+    uint8_t rounds_mod = bsc_rounds_mod(rounds_eff, &rounds_clamped);
+
     /* Special case: only pad_len byte, no payload to decode. */
     if (payload_len == 0u) {
         if (out_written) {
             *out_written = 0u;
         }
-        return BSC_OK;
+        return rounds_clamped ? BSC_WARN_ROUNDS_CLAMPED : BSC_OK;
     }
 
-    uint32_t rounds_eff = bsc_rounds_eff(rounds);
     /* Number of full blocks in the payload. */
     size_t block_count = payload_len / block_size;
 
@@ -214,7 +233,7 @@ int bsc_decode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
     for (size_t block = 0u; block < block_count; ++block) {
         /* YY is chosen cyclically from the key. */
         uint8_t yy = key[1u + (block % shifts_len)];
-        uint8_t shift = bsc_effective_shift(yy, rounds_eff);
+        uint8_t shift = bsc_effective_shift(yy, rounds_mod);
         /* Base index of the current block. */
         size_t base = block * block_size;
 
@@ -232,5 +251,5 @@ int bsc_decode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
         *out_written = real_len;
     }
 
-    return BSC_OK;
+    return rounds_clamped ? BSC_WARN_ROUNDS_CLAMPED : BSC_OK;
 }

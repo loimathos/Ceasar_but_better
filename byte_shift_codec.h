@@ -12,6 +12,7 @@ extern "C" {
 
 typedef enum {
     BSC_OK = 0,
+    BSC_WARN_ROUNDS_CLAMPED = 1,
     BSC_ERR_BAD_KEY = -1,
     BSC_ERR_BAD_PARAM = -2,
     BSC_ERR_OUT_TOO_SMALL = -3,
@@ -27,7 +28,8 @@ typedef enum {
  *   key[1..] = YY sequence (per-block shift base values)
  *
  * Encoding rules:
- * - Input is padded with zero bytes to a multiple of XX.
+ * - Input is padded with PKCS#7-style bytes (value = pad_len) to a multiple of XX.
+ *   If the input is already aligned, pad_len is 0 and no extra block is added.
  * - One extra byte is appended at the end with pad_len.
  * - Each block uses shift = (YY * rounds) mod 256.
  *
@@ -36,10 +38,11 @@ typedef enum {
  * @param key Encoding key (non-NULL).
  * @param key_len Length of the key in bytes (>= 2).
  * @param rounds Number of rounds (BYTE_SHIFT_DEFAULT_ROUNDS if 0).
+ *               If rounds % 256 == 0, rounds is clamped to 1 and a warning is returned.
  * @param out Output buffer (non-NULL, allocated by caller).
  * @param out_len Maximum size of output buffer in bytes.
  * @param out_written Receives number of bytes written (0 on error).
- * @return int Status code (BSC_OK on success).
+ * @return int Status code (BSC_OK or BSC_WARN_ROUNDS_CLAMPED on success).
  *
  * Required output size:
  *   pad_len = (XX - (in_len % XX)) % XX
@@ -68,10 +71,11 @@ int bsc_encode(const uint8_t *in,
  * @param key Decoding key (non-NULL).
  * @param key_len Length of the key in bytes (>= 2).
  * @param rounds Number of rounds (BYTE_SHIFT_DEFAULT_ROUNDS if 0).
+ *               If rounds % 256 == 0, rounds is clamped to 1 and a warning is returned.
  * @param out Output buffer (non-NULL, allocated by caller).
  * @param out_len Maximum size of output buffer in bytes.
  * @param out_written Receives number of bytes written (0 on error).
- * @return int Status code (BSC_OK on success).
+ * @return int Status code (BSC_OK or BSC_WARN_ROUNDS_CLAMPED on success).
  *
  * Required output size:
  *   pad_len = in[in_len - 1]

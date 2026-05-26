@@ -37,9 +37,12 @@ int main(void)
     /* Encode with rounds = 3 (0 would use BYTE_SHIFT_DEFAULT_ROUNDS). */
     rc = bsc_encode(input, sizeof(input), key, sizeof(key), 3u,
                     encoded, sizeof(encoded), &written);
-    if (rc != BSC_OK) {
+    if (rc < 0) {
         printf("encode failed: %d\n", rc);
         return 1;
+    }
+    if (rc == BSC_WARN_ROUNDS_CLAMPED) {
+        printf("encode warning: rounds clamped to avoid zero shift\n");
     }
     /* A valid encoding always writes at least the pad_len suffix byte. */
     if (written == 0u) {
@@ -55,9 +58,12 @@ int main(void)
     /* Decode with the same key and rounds used for encoding. */
     rc = bsc_decode(encoded, written, key, sizeof(key), 3u,
                     decoded, sizeof(decoded), &written);
-    if (rc != BSC_OK) {
+    if (rc < 0) {
         printf("decode failed: %d\n", rc);
         return 1;
+    }
+    if (rc == BSC_WARN_ROUNDS_CLAMPED) {
+        printf("decode warning: rounds clamped to avoid zero shift\n");
     }
 
     /* The decoded output should match the original input bytes. */
