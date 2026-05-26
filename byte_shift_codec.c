@@ -105,7 +105,7 @@ int bsc_encode(const uint8_t *in, size_t in_len, const uint8_t *key, size_t key_
         /* Base index of the current block. */
         size_t base = block * block_size;
 
-        size_t remaining = in_len - base;
+        size_t remaining = (in_len > base) ? (in_len - base) : 0u;
         size_t bytes_in_block = (remaining < block_size) ? remaining : block_size;
 
         /* Encode each byte in the block; last block may be partial. */
